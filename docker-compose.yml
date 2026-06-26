@@ -1,0 +1,7 @@
+version: "3.9"
+
+services:
+  car-hunter:
+    extends:
+      file: infrastructure/docker/docker-compose.yml
+      service: api
