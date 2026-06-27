@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     minio_secure: bool = False
     scrape_interval_minutes: int = 30
     notification_score_threshold: int = 85
+    whatsapp_phone_number_id: str = ""
+    whatsapp_access_token: str = ""
+    whatsapp_to: str = ""
 
     model_config = {"env_file": ".env", "case_sensitive": False, "extra": "ignore"}
 

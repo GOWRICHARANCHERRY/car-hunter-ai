@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, BigInteger, Float, DateTime, JSON, Text, Boolean, ForeignKey, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Integer, BigInteger, Float, DateTime, JSON, Text, Boolean, ForeignKey, UniqueConstraint, Uuid
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -12,7 +11,7 @@ class Base(DeclarativeBase):
 class Car(Base):
     __tablename__ = "cars"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source = Column(String(50), nullable=False, index=True)
     source_id = Column(String(255), nullable=True)
     title = Column(String(500), nullable=True)
@@ -50,8 +49,8 @@ class Car(Base):
 class CarImage(Base):
     __tablename__ = "car_images"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    car_id = Column(UUID(as_uuid=True), ForeignKey("cars.id", ondelete="CASCADE"), nullable=False)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    car_id = Column(Uuid(as_uuid=True), ForeignKey("cars.id", ondelete="CASCADE"), nullable=False)
     original_url = Column(Text, nullable=True)
     storage_path = Column(Text, nullable=True)
     thumbnail_path = Column(Text, nullable=True)
@@ -67,8 +66,8 @@ class CarImage(Base):
 class CarAnalysis(Base):
     __tablename__ = "car_analysis"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    car_id = Column(UUID(as_uuid=True), ForeignKey("cars.id", ondelete="CASCADE"), nullable=False, unique=True)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    car_id = Column(Uuid(as_uuid=True), ForeignKey("cars.id", ondelete="CASCADE"), nullable=False, unique=True)
     score = Column(Integer, nullable=True)
     score_breakdown = Column(JSON, nullable=True)
     fair_price = Column(BigInteger, nullable=True)
@@ -86,8 +85,8 @@ class CarAnalysis(Base):
 class CarPriceHistory(Base):
     __tablename__ = "car_price_history"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    car_id = Column(UUID(as_uuid=True), ForeignKey("cars.id", ondelete="CASCADE"), nullable=False)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    car_id = Column(Uuid(as_uuid=True), ForeignKey("cars.id", ondelete="CASCADE"), nullable=False)
     old_price = Column(BigInteger, nullable=True)
     new_price = Column(BigInteger, nullable=False)
     changed_at = Column(DateTime, default=datetime.utcnow)
@@ -98,9 +97,9 @@ class CarPriceHistory(Base):
 class FavoriteCar(Base):
     __tablename__ = "favorite_cars"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String(255), nullable=False, default="default", index=True)
-    car_id = Column(UUID(as_uuid=True), ForeignKey("cars.id", ondelete="CASCADE"), nullable=False)
+    car_id = Column(Uuid(as_uuid=True), ForeignKey("cars.id", ondelete="CASCADE"), nullable=False)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -112,7 +111,7 @@ class FavoriteCar(Base):
 class SearchProfile(Base):
     __tablename__ = "search_profiles"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String(255), nullable=False, default="default", index=True)
     profile_name = Column(String(200), nullable=False)
     budget_min = Column(BigInteger, nullable=True)
@@ -133,7 +132,7 @@ class SearchProfile(Base):
 class SellerProfile(Base):
     __tablename__ = "seller_profiles"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     seller_name = Column(String(200), nullable=True)
     seller_phone = Column(String(50), nullable=True, index=True)
     seller_email = Column(String(200), nullable=True)
@@ -151,7 +150,7 @@ class SellerProfile(Base):
 class UserPreference(Base):
     __tablename__ = "user_preferences"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String(255), nullable=False, default="default", unique=True)
     budget_min = Column(BigInteger, nullable=True)
     budget_max = Column(BigInteger, nullable=True)
@@ -168,7 +167,7 @@ class UserPreference(Base):
 class MarketPrice(Base):
     __tablename__ = "market_prices"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     model_key = Column(String(500), nullable=False, index=True)
     year = Column(Integer, nullable=True)
     city = Column(String(100), nullable=True)
@@ -183,9 +182,9 @@ class MarketPrice(Base):
 class Notification(Base):
     __tablename__ = "notifications"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String(255), nullable=False, default="default", index=True)
-    car_id = Column(UUID(as_uuid=True), ForeignKey("cars.id", ondelete="SET NULL"), nullable=True)
+    car_id = Column(Uuid(as_uuid=True), ForeignKey("cars.id", ondelete="SET NULL"), nullable=True)
     notification_type = Column(String(50), nullable=False)
     title = Column(String(500), nullable=True)
     message = Column(Text, nullable=True)
@@ -199,7 +198,7 @@ class Notification(Base):
 class ScrapeJob(Base):
     __tablename__ = "scrape_jobs"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source = Column(String(50), nullable=False)
     status = Column(String(20), default="pending")
     started_at = Column(DateTime, nullable=True)

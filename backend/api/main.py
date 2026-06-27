@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,12 +8,39 @@ from fastapi.responses import Response
 from database.repositories import init_db
 from backend.utils.metrics import metrics_middleware
 from backend.api.routes import cars, deals, preferences, chat, stats, notifications
+from backend.config import settings
+
+
+async def scheduler_loop():
+    while True:
+        try:
+            from scrapers.websites.cars24 import Cars24Scraper
+            from scrapers.websites.spinny import SpinnyScraper
+            from scrapers.websites.carwale import CarWaleScraper
+            from scrapers.websites.olx import OLXScraper
+
+            for scraper_cls in [Cars24Scraper, SpinnyScraper, CarWaleScraper, OLXScraper]:
+                try:
+                    scraper = scraper_cls()
+                    await scraper.run()
+                except Exception as e:
+                    print(f"Scraper {scraper_cls.__name__} failed: {e}")
+
+            from ai.analysis.analyzer import analyze_unanalyzed_listings
+            await analyze_unanalyzed_listings()
+
+        except Exception as e:
+            print(f"Scheduler error: {e}")
+
+        await asyncio.sleep(settings.scrape_interval_minutes * 60)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    task = asyncio.create_task(scheduler_loop())
     yield
+    task.cancel()
 
 
 app = FastAPI(title="Car Hunter AI", version="2.0.0", lifespan=lifespan)

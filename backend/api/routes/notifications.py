@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Optional, List
@@ -7,6 +7,7 @@ from database.repositories import get_db
 from database.repositories.queries import get_recent_notifications, create_notification
 from backend.config import settings
 from notifications.telegram import send_telegram_message, format_deal_message
+from notifications.whatsapp import send_whatsapp, format_whatsapp_message
 
 router = APIRouter(tags=["notifications"])
 
@@ -48,6 +49,8 @@ async def test_notification(channel: str = "telegram", db: AsyncSession = Depend
     sent = False
     if channel == "telegram":
         sent = await send_telegram_message(msg)
+    elif channel == "whatsapp":
+        sent = await send_whatsapp(settings.whatsapp_to, msg)
     if sent:
         await create_notification(db, {
             "notification_type": "test",

@@ -1,8 +1,10 @@
 import json
 from typing import Optional
+from sqlalchemy import select
 from google import genai
 
 from database.models import Car, CarAnalysis
+from database.repositories import async_session
 from backend.config import settings
 from ai.analysis.scorer import calculate_score
 
@@ -85,3 +87,18 @@ async def analyze_car(car: Car) -> Optional[CarAnalysis]:
         seller_trust_score=data.get("seller_trust_score"),
         raw_analysis=data,
     )
+
+
+async def analyze_unanalyzed_listings():
+    async with async_session() as session:
+        subq = select(CarAnalysis.car_id)
+        result = await session.execute(
+            select(Car).where(Car.id.not_in(subq), Car.is_active == True)
+        )
+        cars = result.scalars().all()
+        for car in cars:
+            analysis = await analyze_car(car)
+            if analysis:
+                session.add(analysis)
+        await session.commit()
+        print(f"Analyzed {len(cars)} new listings")
