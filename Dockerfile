@@ -12,10 +12,7 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends fonts-unifont 2>/dev/null; \
-    python3 -m playwright install-deps chromium 2>/dev/null; \
-    apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libnss3 libnspr4 libdrm2 libdbus-1-3 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libxshmfence1 \
