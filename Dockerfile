@@ -13,24 +13,18 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
 
 RUN apt-get update && \
-    DEBIAN_VERSION=$(cat /etc/debian_version 2>/dev/null || echo "unknown") && \
-    echo "Debian version: $DEBIAN_VERSION" && \
-    if echo "$DEBIAN_VERSION" | grep -q "^13\|^trixie" || [ "$(cat /etc/os-release 2>/dev/null | grep VERSION_CODENAME | cut -d= -f2)" = "trixie" ]; then \
-        SUFFIX="t64"; \
-    else \
-        SUFFIX=""; \
-    fi && \
     apt-get install -y --no-install-recommends \
-    ca-certificates libnss3 libnspr4 \
-    libatk1.0-0${SUFFIX} libatk-bridge2.0-0${SUFFIX} \
-    libcups2${SUFFIX} libdrm2 libdbus-1-3 \
+    ca-certificates libnss3 libnspr4 libdrm2 libdbus-1-3 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
-    libgbm1 libpango-1.0-0 libcairo2 \
-    libasound2${SUFFIX} libatspi2.0-0${SUFFIX} \
-    libxshmfence1 libglib2.0-0${SUFFIX} \
+    libgbm1 libpango-1.0-0 libcairo2 libxshmfence1 \
     libx11-xcb1 libxcb1 libxext6 libxfixes3 libxi6 libxrender1 \
     libgdk-pixbuf-2.0-0 xdg-utils \
     fonts-liberation fonts-noto-color-emoji fonts-unifont fonts-ubuntu && \
+    for pkg in libatk1.0-0 libatk1.0-0t64 libatk-bridge2.0-0 libatk-bridge2.0-0t64 \
+               libcups2 libcups2t64 libasound2 libasound2t64 \
+               libatspi2.0-0 libatspi2.0-0t64 libglib2.0-0 libglib2.0-0t64; do \
+      apt-get install -y --no-install-recommends $pkg && break || true; \
+    done && \
     rm -rf /var/lib/apt/lists/*
 
 COPY . .
