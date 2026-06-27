@@ -15,7 +15,6 @@ class CarWaleScraper(BaseScraper):
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             await page.wait_for_timeout(2000)
 
-        print(f"[CarWale] URL: {page.url}, Title: {await page.title()}", flush=True)
         cards = await page.query_selector_all(
             '[class*="UsedCarCard-module-scss-module"]'
         )

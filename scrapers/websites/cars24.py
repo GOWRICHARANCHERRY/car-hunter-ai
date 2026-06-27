@@ -1,4 +1,6 @@
 import re
+import asyncio
+import cloudscraper
 from typing import Optional, Dict, List
 from scrapers.browsers import BaseScraper
 
@@ -8,101 +10,104 @@ class Cars24Scraper(BaseScraper):
 
     async def scrape_listings(self, page, session) -> List[Dict]:
         listings = []
-        await page.goto("https://www.cars24.com/buy-used-cars-bangalore/", timeout=60000)
-        await page.wait_for_timeout(5000)
+        try:
+            scraper = cloudscraper.create_scraper()
+            resp = await asyncio.to_thread(
+                scraper.get,
+                "https://www.cars24.com/buy-used-cars-bangalore/",
+                timeout=30,
+            )
+            html = resp.text
+        except Exception as e:
+            print(f"[Cars24] Fetch failed: {e}", flush=True)
+            return []
 
-        for _ in range(5):
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await page.wait_for_timeout(2000)
+        card_pattern = re.compile(
+            r'<a\s[^>]*class="[^"]*carCardWrapper[^"]*"[^>]*href="([^"]+)"[^>]*>'
+            r'.*?styles_priceWrap[^>]*>\s*([^<]+)\s*<',
+            re.DOTALL,
+        )
 
-        import time
-        await page.wait_for_timeout(5000)
-
-        title = await page.title()
-        url = page.url
-        print(f"[Cars24] URL: {url}, Title: {title}", flush=True)
-
-        cards = await page.query_selector_all('a[class*="carCardWrapper"]')
-        print(f"[Cars24] Cards found: {len(cards)}", flush=True)
-
-        for card in cards[:30]:
+        for match in card_pattern.finditer(html):
             try:
-                data = await self._extract(page, card)
+                data = self._extract(match)
                 if data and data.get("price"):
                     listings.append(data)
             except Exception as e:
-                print(f"Cars24 card error: {e}")
+                print(f"[Cars24] card error: {e}", flush=True)
 
         return listings
 
-    async def _extract(self, page, card) -> Optional[Dict]:
-        url = await card.get_attribute("href") or ""
+    def _extract(self, match: re.Match) -> Optional[Dict]:
+        url = match.group(1).strip()
         full_url = f"https://www.cars24.com{url}" if url.startswith("/") else url
         source_id = url.rstrip("/").split("/")[-1] if url else ""
 
-        card_text = await card.inner_text()
-        lines = [l.strip() for l in card_text.split("\n") if l.strip()]
+        price_raw = match.group(2).strip()
+        price_lines = [l.strip() for l in price_raw.split("\n") if l.strip()]
+        actual_price = (
+            next((l for l in price_lines if "lakh" in l.lower()), price_lines[-1])
+            if len(price_lines) > 1
+            else price_raw
+        )
+        price = self._format_price(actual_price)
+
+        card_html = match.group(0)
+        text = re.sub(r'<[^>]+>', ' ', card_html)
+        text = re.sub(r'\s+', ' ', text).strip()
 
         title = ""
         year = None
-        for line in lines:
-            if re.match(r"^(20\d{2})\s", line):
-                title = line
-                year = int(re.match(r"^(20\d{2})", line).group(1))
+        for line in text.split("Cars24 Owned Stock"):
+            line = line.strip()
+            if not line:
+                continue
+            yr_match = re.search(r'\b(20\d{2})\b', line)
+            if yr_match:
+                title = line.split("EMI")[0].strip() if "EMI" in line else line
+                year = int(yr_match.group(1))
                 break
+
+        if not year:
+            yr_match = re.search(r'\b(20\d{2})\b', text)
+            if yr_match:
+                year = int(yr_match.group(1))
+                yr_pos = yr_match.start()
+                title = text[yr_pos:].split("EMI")[0].strip() if "EMI" in text else text[yr_pos:].split("₹")[0].strip()
 
         brand, model = self.extract_brand_model(title)
 
-        price_el = await card.query_selector('[class*="priceWrap"]')
-        price_str = await price_el.inner_text() if price_el else ""
-        # Cars24 shows two prices: display price (₹X.XXL) and actual price (₹X.XX lakh)
-        # Take the one with "lakh" spelled out as the actual price
-        price_lines = [l.strip() for l in price_str.split("\n") if l.strip()]
-        if len(price_lines) > 1:
-            actual_price = next((l for l in price_lines if "lakh" in l.lower()), price_lines[-1])
-        else:
-            actual_price = price_str
-        price = self._format_price(actual_price)
-
-        detail_text = " ".join(lines)
-
-        img_el = await card.query_selector("img[src*='cars24'], img[src*='c24']")
-        img_url = await img_el.get_attribute("src") if img_el else None
-        if not img_url:
-            img_el = await card.query_selector("img")
-            img_url = await img_el.get_attribute("src") if img_el else None
+        mileage = None
+        km_match = re.search(r'([\d,]+)\s*km', text, re.IGNORECASE)
+        if km_match:
+            mileage = int(km_match.group(1).replace(",", ""))
 
         fuel_type = None
         for f in ["Petrol", "Diesel", "CNG", "Electric", "Hybrid"]:
-            if f in detail_text:
+            if f in text:
                 fuel_type = f
                 break
 
         transmission = None
-        if "Automatic" in detail_text:
+        if "Automatic" in text:
             transmission = "Automatic"
-        elif "Manual" in detail_text:
+        elif "Manual" in text:
             transmission = "Manual"
 
-        mileage = self._extract_mileage(detail_text)
+        img_match = re.search(r'<img[^>]*src="([^"]+)"', card_html)
+        img_url = img_match.group(1) if img_match else None
 
         return {
             "source_id": source_id,
-            "title": title.strip(),
+            "title": title.strip()[:100],
             "brand": brand,
             "model": model,
             "year": year,
             "price": price,
             "mileage": mileage,
-            "listing_url": full_url,
-            "image_urls": [img_url] if img_url else [],
-            "description": detail_text.strip(),
             "fuel_type": fuel_type,
             "transmission": transmission,
+            "listing_url": full_url,
+            "image_urls": [img_url] if img_url else [],
+            "description": text.strip()[:300],
         }
-
-    def _extract_mileage(self, text: str) -> Optional[int]:
-        match = re.search(r'([\d,]+)\s*km', text)
-        if match:
-            return int(match.group(1).replace(",", ""))
-        return None

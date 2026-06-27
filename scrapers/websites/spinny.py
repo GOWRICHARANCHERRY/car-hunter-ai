@@ -15,9 +15,6 @@ class SpinnyScraper(BaseScraper):
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             await page.wait_for_timeout(2000)
 
-        title_text = await page.title()
-        page_url = page.url
-        print(f"[Spinny] URL: {page_url}, Title: {title_text}", flush=True)
         cards = await page.query_selector_all(
             '[class*="CarListingCardV2__carListingCardV2Root"]'
         )

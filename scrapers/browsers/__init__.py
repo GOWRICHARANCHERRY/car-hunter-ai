@@ -42,6 +42,8 @@ class BaseScraper(ABC):
                     args=[
                         "--no-sandbox",
                         "--disable-blink-features=AutomationControlled",
+                        "--disable-web-security",
+                        "--disable-features=IsolateOrigins,site-per-process",
                     ],
                 )
                 context = await browser.new_context(
@@ -50,8 +52,10 @@ class BaseScraper(ABC):
                 )
                 await context.add_init_script("""
                     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                    Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4] });
+                    Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
                     Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                    // Override chrome object
+                    window.chrome = { runtime: {} };
                 """)
                 page = await context.new_page()
                 listings = await self.scrape_listings(page, None)
