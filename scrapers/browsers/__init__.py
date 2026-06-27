@@ -100,6 +100,7 @@ class BaseScraper(ABC):
                         updated += 1
                 except Exception as e:
                     print(f"Save error: {e}", flush=True)
+                    await session.rollback()
 
             j = await session.get(ScrapeJob, job_id)
             if j:
@@ -119,20 +120,22 @@ class BaseScraper(ABC):
         return listings
 
     async def _save_listing(self, session, data: Dict) -> str:
+        data["source"] = self.source_name
         repo = CarRepository(session)
         car = await repo.upsert(data)
         result = "updated" if car.updated_at != car.created_at else "new"
 
-        if data.get("images"):
-            for img_data in data["images"]:
+        image_urls = data.get("image_urls") or data.get("images") or []
+        for url in image_urls:
+            if isinstance(url, str):
                 existing = await session.execute(
                     select(CarImage).where(
                         CarImage.car_id == car.id,
-                        CarImage.original_url == img_data.get("original_url"),
+                        CarImage.original_url == url,
                     )
                 )
                 if not existing.scalar_one_or_none():
-                    session.add(CarImage(car_id=car.id, **img_data))
+                    session.add(CarImage(car_id=car.id, original_url=url))
 
         if car.seller_phone:
             await upsert_seller_profile(session, {
