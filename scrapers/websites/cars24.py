@@ -15,7 +15,15 @@ class Cars24Scraper(BaseScraper):
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             await page.wait_for_timeout(2000)
 
+        import time
+        await page.wait_for_timeout(5000)
+
+        title = await page.title()
+        url = page.url
+        print(f"[Cars24] URL: {url}, Title: {title}", flush=True)
+
         cards = await page.query_selector_all('a[class*="carCardWrapper"]')
+        print(f"[Cars24] Cards found: {len(cards)}", flush=True)
 
         for card in cards[:30]:
             try:
