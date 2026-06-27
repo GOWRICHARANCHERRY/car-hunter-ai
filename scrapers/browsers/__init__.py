@@ -23,6 +23,7 @@ class BaseScraper(ABC):
         pass
 
     async def run(self):
+        import traceback
         from playwright.async_api import async_playwright
 
         job_id = None
@@ -33,15 +34,18 @@ class BaseScraper(ABC):
             job_id = job.id
 
         listings = []
+        browser = None
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
             try:
+                browser = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
                 page = await browser.new_page(
                     viewport={"width": 1920, "height": 1080},
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                 )
                 listings = await self.scrape_listings(page, None)
             except Exception as e:
+                print(f"[{self.source_name}] Error: {e}")
+                traceback.print_exc()
                 async with async_session() as session:
                     j = await session.get(ScrapeJob, job_id)
                     if j:
@@ -50,7 +54,8 @@ class BaseScraper(ABC):
                         await session.commit()
                 raise e
             finally:
-                await browser.close()
+                if browser:
+                    await browser.close()
 
         saved = 0
         updated = 0

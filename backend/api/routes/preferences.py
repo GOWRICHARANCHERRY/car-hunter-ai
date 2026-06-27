@@ -73,6 +73,8 @@ async def save_user_preferences(body: PreferenceBody, db: AsyncSession = Depends
 
 
 async def search_and_notify_on_preferences(prefs: dict):
+    print(f"[search_and_notify] Starting background search with prefs: {prefs}")
+    import traceback
     from scrapers.websites.cars24 import Cars24Scraper
     from scrapers.websites.spinny import SpinnyScraper
     from scrapers.websites.carwale import CarWaleScraper
@@ -84,11 +86,13 @@ async def search_and_notify_on_preferences(prefs: dict):
     new_count = 0
     for scraper_cls in [Cars24Scraper, SpinnyScraper, CarWaleScraper, OLXScraper]:
         try:
+            print(f"[search_and_notify] Running {scraper_cls.__name__}...")
             scraper = scraper_cls()
             await scraper.run()
             new_count += 1
         except Exception as e:
-            print(f"Scraper {scraper_cls.__name__} failed: {e}")
+            print(f"[search_and_notify] Scraper {scraper_cls.__name__} failed: {e}")
+            traceback.print_exc()
 
     await analyze_unanalyzed_listings()
 
