@@ -8,8 +8,12 @@ class CarWaleScraper(BaseScraper):
 
     async def scrape_listings(self, page, session) -> List[Dict]:
         listings = []
-        await page.goto("https://www.carwale.com/used/", timeout=60000)
-        await page.wait_for_timeout(5000)
+        try:
+            await page.goto("https://www.carwale.com/used/", timeout=30000, wait_until="domcontentloaded")
+        except Exception as e:
+            print(f"[CarWale] goto failed: {e}", flush=True)
+            return []
+        await page.wait_for_timeout(8000)
 
         for _ in range(5):
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
