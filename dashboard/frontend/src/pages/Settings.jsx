@@ -49,7 +49,7 @@ export default function Settings() {
         transmission: prefs.transmission || null,
         colors: prefs.colors.split(',').map(s => s.trim()).filter(Boolean),
       })
-      setMessage('Preferences saved!')
+      setMessage('Preferences saved! Searching all sites for matching cars... Check Telegram for results.')
     } catch (e) {
       setMessage('Error saving preferences')
     } finally {

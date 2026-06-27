@@ -1,12 +1,15 @@
 import uuid
+import asyncio
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Optional, List
 
-from database.repositories import get_db
+from database.repositories import get_db, async_session
 from database.repositories.queries import get_preferences, save_preferences, get_search_profiles, create_search_profile
-from database.repositories.queries import get_favorites, add_favorite, remove_favorite
+from database.repositories.queries import get_favorites, add_favorite, remove_favorite, create_notification
+from database.models import Car, CarAnalysis
 
 router = APIRouter(tags=["preferences"])
 
@@ -60,9 +63,135 @@ async def get_user_preferences(db: AsyncSession = Depends(get_db)):
 
 @router.post("/preferences")
 async def save_user_preferences(body: PreferenceBody, db: AsyncSession = Depends(get_db)):
-    await save_preferences(db, body.model_dump(exclude_none=True))
+    prefs_data = body.model_dump(exclude_none=True)
+    await save_preferences(db, prefs_data)
     await db.commit()
-    return {"status": "saved"}
+
+    asyncio.create_task(search_and_notify_on_preferences(prefs_data))
+
+    return {"status": "saved", "search_started": True, "message": "Preferences saved! Searching for matching cars..."}
+
+
+async def search_and_notify_on_preferences(prefs: dict):
+    from scrapers.websites.cars24 import Cars24Scraper
+    from scrapers.websites.spinny import SpinnyScraper
+    from scrapers.websites.carwale import CarWaleScraper
+    from scrapers.websites.olx import OLXScraper
+    from ai.analysis.analyzer import analyze_unanalyzed_listings
+    from notifications.telegram import send_telegram_message, format_deal_message
+    from sqlalchemy import select, and_, or_
+
+    new_count = 0
+    for scraper_cls in [Cars24Scraper, SpinnyScraper, CarWaleScraper, OLXScraper]:
+        try:
+            scraper = scraper_cls()
+            await scraper.run()
+            new_count += 1
+        except Exception as e:
+            print(f"Scraper {scraper_cls.__name__} failed: {e}")
+
+    await analyze_unanalyzed_listings()
+
+    async with async_session() as session:
+        conditions = [Car.is_active == True, CarAnalysis.id != None]
+        query = select(Car).join(CarAnalysis, Car.id == CarAnalysis.car_id)
+
+        budget_min = prefs.get("budget_min")
+        budget_max = prefs.get("budget_max")
+        max_kms = prefs.get("max_kms")
+        preferred_models = prefs.get("preferred_models")
+        cities = prefs.get("cities")
+        fuel_types = prefs.get("fuel_types")
+        transmission = prefs.get("transmission")
+        colors = prefs.get("colors")
+
+        if budget_min:
+            conditions.append(Car.price >= budget_min)
+        if budget_max:
+            conditions.append(Car.price <= budget_max)
+        if max_kms:
+            conditions.append(Car.kms <= max_kms)
+        if preferred_models:
+            model_conditions = [Car.model.ilike(f"%{m}%") for m in preferred_models]
+            conditions.append(or_(*model_conditions))
+        if cities:
+            city_conditions = [Car.city.ilike(f"%{c}%") for c in cities]
+            conditions.append(or_(*city_conditions))
+        if fuel_types:
+            fuel_conditions = [Car.fuel_type.ilike(f) for f in fuel_types]
+            conditions.append(or_(*fuel_conditions))
+        if transmission:
+            conditions.append(Car.transmission.ilike(f"%{transmission}%"))
+        if colors:
+            color_conditions = [Car.color.ilike(f"%{c}%") for c in colors]
+            conditions.append(or_(*color_conditions))
+
+        query = query.where(and_(*conditions)).order_by(CarAnalysis.score.desc()).limit(10)
+        result = await session.execute(query)
+        cars = result.scalars().all()
+
+        if not cars:
+            msg = (
+                "🔍 *Search Complete*\n\n"
+                f"Scraped {new_count} sites but no cars matched your preferences yet.\n"
+                "Scheduler will keep checking every 14 minutes."
+            )
+            await send_telegram_message(msg)
+            return
+
+        score_threshold = 70
+        deals = []
+        for car in cars:
+            analysis = await session.execute(
+                select(CarAnalysis).where(CarAnalysis.car_id == car.id)
+            )
+            analysis = analysis.scalar_one_or_none()
+            if analysis and analysis.score and analysis.score >= score_threshold:
+                deals.append({
+                    "title": car.title or "",
+                    "year": car.year,
+                    "kms": car.kms or 0,
+                    "price": car.price or 0,
+                    "score": analysis.score,
+                    "fair_price": analysis.fair_price,
+                    "pros": analysis.pros or [],
+                    "cons": analysis.cons or [],
+                    "listing_url": car.listing_url or "",
+                })
+
+        if deals:
+            header = f"🔍 *Search Results — {len(deals)} deals found*\n\n"
+            await send_telegram_message(header + "Top matches below 👇")
+
+            for deal in deals[:5]:
+                try:
+                    msg = format_deal_message(deal)
+                    await send_telegram_message(msg)
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    print(f"Failed to send deal notification: {e}")
+        else:
+            await send_telegram_message(
+                f"🔍 *Search Complete*\n\nFound {len(cars)} matching cars but none scored above {score_threshold}. Scheduler will keep checking."
+            )
+
+        for car in cars[:10]:
+            analysis = await session.execute(
+                select(CarAnalysis).where(CarAnalysis.car_id == car.id)
+            )
+            analysis = analysis.scalar_one_or_none()
+            await create_notification(session, {
+                "user_id": "default",
+                "car_id": car.id,
+                "notification_type": "preference_match",
+                "title": f"Preference match: {car.title}",
+                "message": f"{car.title} — ₹{car.price:,}" if car.price else car.title,
+                "score": analysis.score if analysis else None,
+                "channel": "telegram",
+                "sent": True,
+                "sent_at": datetime.utcnow(),
+            })
+        await session.commit()
 
 
 @router.get("/search-profiles")
