@@ -55,7 +55,7 @@ async def analyze_car(car: Car) -> Optional[CarAnalysis]:
         )
         try:
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-1.5-flash",
                 contents=prompt,
             )
             text = response.text.strip()

@@ -9,27 +9,41 @@ class OLXScraper(BaseScraper):
 
     async def scrape_listings(self, page=None, session=None) -> List[Dict]:
         import httpx
+        import asyncio
         listings = []
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/125.0.0.0 Safari/537.36"
+            ),
+        }
 
-        try:
-            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-                resp = await client.get(
-                    "https://www.olx.in/cars/",
-                    headers={
-                        "User-Agent": (
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/125.0.0.0 Safari/537.36"
-                        ),
-                    },
-                )
-                html = resp.text
-        except httpx.TimeoutException:
-            print("[OLX] HTTP timeout - OLX may be blocking")
-            return []
-        except Exception as e:
-            err_msg = str(e) or type(e).__name__
-            print(f"[OLX] HTTP fetch failed: {err_msg}")
+        html = None
+        for attempt in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+                    resp = await client.get(
+                        "https://www.olx.in/cars/",
+                        headers=headers,
+                    )
+                    html = resp.text
+                    break
+            except httpx.TimeoutException:
+                print(f"[OLX] HTTP timeout (attempt {attempt + 1})")
+                if attempt == 0:
+                    headers["User-Agent"] = (
+                        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
+                        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+                    )
+                    await asyncio.sleep(5)
+            except Exception as e:
+                err_msg = str(e) or type(e).__name__
+                print(f"[OLX] HTTP fetch failed: {err_msg}")
+                return []
+
+        if not html:
+            print("[OLX] No response after retries")
             return []
 
         items = re.findall(

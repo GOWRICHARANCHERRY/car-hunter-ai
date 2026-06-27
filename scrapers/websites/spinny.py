@@ -1,45 +1,66 @@
 import re
+import json
 from typing import Optional, Dict, List
 from scrapers.browsers import BaseScraper
 
 
 class SpinnyScraper(BaseScraper):
     source_name = "Spinny"
-    needs_browser = False
+    needs_browser = True
 
     async def scrape_listings(self, page=None, session=None) -> List[Dict]:
-        import httpx
         listings = []
+        if not page:
+            return listings
 
         try:
-            async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
-                resp = await client.get(
-                    "https://www.spinny.com/used--cars-in-delhi-ncr/s/",
-                    headers={
-                        "User-Agent": (
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/125.0.0.0 Safari/537.36"
-                        ),
-                    },
-                )
-                html = resp.text
+            await page.goto(
+                "https://www.spinny.com/used--cars-in-delhi-ncr/s/",
+                wait_until="domcontentloaded",
+                timeout=60000,
+            )
+            await page.wait_for_timeout(5000)
+            try:
+                await page.wait_for_selector('[class*="CarListingCard"]', timeout=15000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(2000)
+            html = await page.content()
         except Exception as e:
-            err_msg = str(e) or type(e).__name__
-            print(f"[Spinny] HTTP fetch failed: {err_msg}", flush=True)
+            print(f"[Spinny] Page load error: {e}", flush=True)
             return []
 
         cards_found = re.findall(
-            r'class="[^"]*CarListingCardV2[^"]*"[^>]*>.*?</(?:a|div)>\s*</(?:a|div)>',
+            r'class="[^"]*CarListingCard[^"]*"[^>]*>.*?</(?:a|div)>\s*</(?:a|div)>',
             html,
             re.DOTALL,
         )
 
         if not cards_found:
-            cards_found = html.split('class="CarListingCardV2__carListingCardV2Root')[1:]
-            cards_found = ['<div' + c[:3000] for c in cards_found]
+            cards_found = html.split('class="CarListingCardV2__')[1:]
+            cards_found = [c.split("</")[0] for c in cards_found[:30]]
 
-        for card_html in cards_found[:30]:
+        if not cards_found:
+            state_match = re.search(r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\}),\s*window\.', html, re.DOTALL)
+            if state_match:
+                js_str = state_match.group(1)
+                js_str = js_str.replace('!0', 'true').replace('!1', 'false')
+                js_str = re.sub(r'void\s+0', 'null', js_str)
+                js_str = re.sub(r'\bundefined\b', 'null', js_str)
+                try:
+                    state = json.loads(js_str)
+                    for section in state.values():
+                        if isinstance(section, dict):
+                            for data_list in section.values():
+                                if isinstance(data_list, list) and len(data_list) > 0 and isinstance(data_list[0], dict):
+                                    for item in data_list:
+                                        d = self._js_extract(item)
+                                        if d and d.get("price"):
+                                            listings.append(d)
+                except (json.JSONDecodeError, Exception) as e:
+                    print(f"[Spinny] State parse error: {e}", flush=True)
+
+        for card_html in cards_found[:50]:
             try:
                 data = self._extract(card_html)
                 if data and data.get("price"):
@@ -49,6 +70,50 @@ class SpinnyScraper(BaseScraper):
 
         print(f"[Spinny] Found {len(cards_found)} card blocks, extracted {len(listings)} listings", flush=True)
         return listings
+
+    def _js_extract(self, item: dict) -> Optional[Dict]:
+        name = item.get("name") or item.get("title") or item.get("carName", "")
+        if not name:
+            return None
+        price = item.get("priceNumeric") or item.get("price")
+        if not price:
+            return None
+        if isinstance(price, str):
+            price = self._format_price(price)
+        full_url = item.get("url") or item.get("link", "")
+        listing_url = full_url if full_url.startswith("http") else f"https://www.spinny.com{full_url}" if full_url else ""
+        source_id = item.get("id") or item.get("stockId") or item.get("uuid", "")
+
+        year = item.get("year") or item.get("makeYear")
+        mileage = item.get("kilometer") or item.get("kmNumeric") or item.get("odometer")
+        fuel_type = item.get("fuelType") or item.get("fuel", "")
+        transmission = item.get("transmission") or item.get("transmissionType", "")
+        city = item.get("city") or item.get("cityName", "")
+        owners = item.get("ownerNumber") or item.get("owners", "")
+        img_url = item.get("imageUrl") or item.get("image", item.get("imageUrls", [None])[0] if isinstance(item.get("imageUrls"), list) else None)
+        brand = item.get("brand") or item.get("makeName", "")
+        model = item.get("model") or item.get("modelName", "")
+        registration = item.get("registrationNumber") or item.get("registration", "")
+        color = item.get("color", "")
+
+        return {
+            "source_id": source_id,
+            "title": str(name)[:200],
+            "brand": brand,
+            "model": model,
+            "year": year,
+            "price": price,
+            "mileage": mileage,
+            "fuel_type": fuel_type,
+            "transmission": transmission,
+            "listing_url": listing_url,
+            "image_urls": [img_url] if img_url else [],
+            "description": str(name)[:300],
+            "city": city,
+            "owners": owners,
+            "registration": registration,
+            "color": color,
+        }
 
     def _extract(self, card_html: str) -> Optional[Dict]:
         card_text = re.sub(r'<[^>]+>', ' ', card_html)
@@ -60,12 +125,11 @@ class SpinnyScraper(BaseScraper):
         source_id = url.rstrip("/").split("/")[-1] if url else ""
 
         title = ""
-        yr_match = re.search(r'\b(20\d{2})\b', card_text)
-        year = int(yr_match.group(1)) if yr_match else None
+        yr = self.extract_year(card_text)
         for sep in ["Used", "used", "Year"]:
             if sep in card_text:
                 parts = card_text.split(sep, 1)
-                title = parts[0].strip() if len(parts) > 0 else card_text
+                title = parts[0].strip()
                 break
         if not title:
             title = card_text[:100].strip()
@@ -118,7 +182,7 @@ class SpinnyScraper(BaseScraper):
             "title": title.strip()[:100],
             "brand": brand,
             "model": model,
-            "year": year,
+            "year": yr,
             "price": price,
             "mileage": mileage,
             "fuel_type": fuel_type,

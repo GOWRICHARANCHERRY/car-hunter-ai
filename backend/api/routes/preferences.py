@@ -94,7 +94,12 @@ async def search_and_notify_on_preferences(prefs: dict):
             print(f"[search_and_notify] Scraper {scraper_cls.__name__} failed: {e}")
             traceback.print_exc()
 
-    await analyze_unanalyzed_listings()
+    try:
+        await analyze_unanalyzed_listings()
+    except Exception as e:
+        print(f"[search_and_notify] AI analysis error (continuing): {e}", flush=True)
+        import traceback
+        traceback.print_exc()
 
     async with async_session() as session:
         conditions = [Car.is_active == True, CarAnalysis.id != None]
