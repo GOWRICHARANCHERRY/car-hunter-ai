@@ -15,9 +15,19 @@ class Cars24Scraper(BaseScraper):
             resp = await asyncio.to_thread(
                 scraper.get,
                 "https://www.cars24.com/buy-used-cars-bangalore/",
-                timeout=30,
+                timeout=60,
             )
             html = resp.text
+            status = resp.status_code
+            length = len(html)
+
+            cloudflare = "Attention Required" in html or "Just a moment" in html or "cf-browser-verification" in html
+            if cloudflare:
+                print(f"[Cars24] CLOUDFLARE BLOCKED (status={status}, length={length})", flush=True)
+            else:
+                has_next = "__NEXT_DATA__" in html
+                card_count = len(re.findall(r'carCardWrapper', html))
+                print(f"[Cars24] OK (status={status}, length={length}, has_next={has_next}, carCardWrapper mentions={card_count})", flush=True)
         except Exception as e:
             print(f"[Cars24] Fetch failed: {e}", flush=True)
             return []
@@ -28,14 +38,17 @@ class Cars24Scraper(BaseScraper):
             re.DOTALL,
         )
 
+        found = 0
         for match in card_pattern.finditer(html):
+            found += 1
             try:
                 data = self._extract(match)
                 if data and data.get("price"):
                     listings.append(data)
             except Exception as e:
-                print(f"[Cars24] card error: {e}", flush=True)
+                print(f"[Cars24] card error #{found}: {e}", flush=True)
 
+        print(f"[Cars24] Regex matched {found} cards, extracted {len(listings)}", flush=True)
         return listings
 
     def _extract(self, match: re.Match) -> Optional[Dict]:
