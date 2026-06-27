@@ -7,61 +7,85 @@ class OLXScraper(BaseScraper):
     source_name = "OLX"
 
     async def scrape_listings(self, page, session) -> List[Dict]:
+        import httpx
         listings = []
-        await page.goto("https://www.olx.in/cars/", timeout=60000)
-        await page.wait_for_timeout(5000)
 
-        for _ in range(8):
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await page.wait_for_timeout(3000)
+        try:
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+                resp = await client.get(
+                    "https://www.olx.in/cars/",
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/125.0.0.0 Safari/537.36"
+                        ),
+                    },
+                )
+                html = resp.text
+        except httpx.TimeoutException:
+            print("[OLX] HTTP timeout - OLX may be blocking")
+            return []
+        except Exception as e:
+            err_msg = str(e) or type(e).__name__
+            print(f"[OLX] HTTP fetch failed: {err_msg}")
+            return []
 
-        cards = await page.query_selector_all('li[data-aut-id="itemBox2"]')
-        if not cards:
-            cards = await page.query_selector_all('[data-aut-id="itemsList"] a[href*="/item/"]')
+        items = re.findall(
+            r'<li[^>]*data-aut-id="itemBox2"[^>]*>(.*?)</li>',
+            html,
+            re.DOTALL,
+        )
 
-        for card in cards[:30]:
+        for item_html in items[:30]:
             try:
-                data = await self._extract(page, card)
+                data = self._extract(item_html)
                 if data and data.get("price"):
                     listings.append(data)
             except Exception as e:
-                print(f"OLX card error: {e}")
+                print(f"[OLX] card error: {e}")
 
         return listings
 
-    async def _extract(self, page, card) -> Optional[Dict]:
-        link_el = await card.query_selector("a[href]")
-        url = await link_el.get_attribute("href") if link_el else ""
+    def _extract(self, item_html: str) -> Optional[Dict]:
+        url_match = re.search(r'<a\s+class=""\s+href="([^"]+)"', item_html)
+        url = url_match.group(1).strip() if url_match else ""
 
-        title_el = await card.query_selector('[data-aut-id="itemTitle"]')
-        title = await title_el.inner_text() if title_el else ""
+        title_match = re.search(
+            r'data-aut-id="itemTitle"[^>]*>\s*(.*?)\s*<', item_html
+        )
+        title = title_match.group(1).strip() if title_match else ""
 
-        price_el = await card.query_selector('[data-aut-id="itemPrice"]')
-        price_str = await price_el.inner_text() if price_el else ""
+        price_match = re.search(
+            r'data-aut-id="itemPrice"[^>]*>\s*(.*?)\s*<', item_html
+        )
+        price_str = price_match.group(1).strip() if price_match else ""
 
-        subtitle_el = await card.query_selector('[data-aut-id="itemSubTitle"]')
-        subtitle = await subtitle_el.inner_text() if subtitle_el else ""
+        subtitle_match = re.search(
+            r'data-aut-id="itemSubTitle"[^>]*>\s*(.*?)\s*<', item_html
+        )
+        subtitle = subtitle_match.group(1).strip() if subtitle_match else ""
 
-        details_el = await card.query_selector('[data-aut-id="itemDetails"]')
-        detail_text = await details_el.inner_text() if details_el else ""
-
-        img_el = await card.query_selector("img")
-        img_url = await img_el.get_attribute("src") if img_el else None
+        img_match = re.search(
+            r'<img[^>]*src="([^"]+)"', item_html
+        )
+        img_url = str(img_match.group(1)) if img_match else None
 
         brand, model = self.extract_brand_model(title)
         full_url = url if url.startswith("http") else f"https://www.olx.in{url}"
         source_id = url.split("iid-")[-1] if "iid-" in url else url.split("/")[-1]
 
-        year = self.extract_year(subtitle)
+        year = None
         mileage = None
         if subtitle:
             parts = subtitle.split("-")
-            if len(parts) > 1:
-                km_match = re.search(r'([\d,]+)\s*km', parts[1])
-                if km_match:
-                    mileage = int(km_match.group(1).replace(",", ""))
-
-        location = detail_text.split("\n")[0].strip() if detail_text else ""
+            yr_match = re.search(r'\b(20\d{2})\b', parts[0] if parts else subtitle)
+            if yr_match:
+                year = int(yr_match.group(1))
+            km_str = parts[1] if len(parts) > 1 else subtitle
+            km_match = re.search(r'([\d,]+)\s*km', km_str, re.IGNORECASE)
+            if km_match:
+                mileage = int(km_match.group(1).replace(",", ""))
 
         return {
             "source_id": source_id,
@@ -74,5 +98,4 @@ class OLXScraper(BaseScraper):
             "listing_url": full_url,
             "image_urls": [img_url] if img_url else [],
             "description": subtitle.strip(),
-            "location": location,
         }

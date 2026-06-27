@@ -1,3 +1,4 @@
+import re
 from typing import Optional, Dict, List
 from scrapers.browsers import BaseScraper
 
@@ -7,16 +8,16 @@ class SpinnyScraper(BaseScraper):
 
     async def scrape_listings(self, page, session) -> List[Dict]:
         listings = []
-        await page.goto("https://www.spinny.com/used-cars/", timeout=60000)
+        await page.goto("https://www.spinny.com/used--cars-in-delhi-ncr/s/", timeout=60000)
         await page.wait_for_timeout(5000)
 
-        for _ in range(8):
+        for _ in range(5):
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             await page.wait_for_timeout(2000)
 
-        cards = await page.query_selector_all('[class*="CarCard"], [class*="car-card"], a[href*="/car/"]')
-        if not cards:
-            cards = await page.query_selector_all("a[href*='/used-car']")
+        cards = await page.query_selector_all(
+            '[class*="CarListingCardV2__carListingCardV2Root"]'
+        )
 
         for card in cards[:30]:
             try:
@@ -29,32 +30,83 @@ class SpinnyScraper(BaseScraper):
         return listings
 
     async def _extract(self, page, card) -> Optional[Dict]:
-        title_el = await card.query_selector("h3, h2, [class*='title'], [class*='name']")
-        title = await title_el.inner_text() if title_el else ""
+        parent_link = await card.evaluate("el => el.closest('a')?.getAttribute('href') || ''")
+        url = str(parent_link) if parent_link else ""
+        full_url = url if url.startswith("http") else f"https://www.spinny.com{url}"
+        source_id = url.rstrip("/").split("/")[-1] if url else ""
 
-        price_el = await card.query_selector('[class*="price"], span:has-text("₹")')
-        price_str = await price_el.inner_text() if price_el else ""
+        title_el = await card.query_selector(
+            'a[class*="ListingBrandModelDetail__makeModelLink"], '
+            'span[class*="ListingBrandModelDetail__make"]'
+        )
+        title = (await title_el.inner_text()).strip() if title_el else ""
+        title = title.replace("\u00a0", " ")
 
-        link_el = await card.query_selector("a[href]")
-        url = await link_el.get_attribute("href") if link_el else ""
+        price_el = await card.query_selector(
+            'span[class*="ListingBrandModelDetail__priceWithRupeeSymbol"], '
+            'li[class*="ListingBrandModelDetail__price"]'
+        )
+        price_str = (await price_el.inner_text()).strip() if price_el else ""
 
-        detail_el = await card.query_selector('[class*="detail"], [class*="spec"]')
-        detail_text = await detail_el.inner_text() if detail_el else ""
+        variant_el = await card.query_selector(
+            'span[class*="ListingPricingDetail__variant"]'
+        )
+        variant = (await variant_el.inner_text()).strip() if variant_el else ""
+
+        details_el = await card.query_selector(
+            'ul[class*="CarListingCardDetail__more"]'
+        )
+        detail_text = (await details_el.inner_text()).strip() if details_el else ""
+
+        location_el = await card.query_selector(
+            'span[class*="HubDetails__hubAddress"]'
+        )
+        location = (await location_el.inner_text()).strip() if location_el else ""
+
+        brand, model = self.extract_brand_model(title)
+
+        if variant and model:
+            model = f"{model} {variant}".strip()
+
+        price = self._format_price(price_str)
+        year = self.extract_year(title)
+
+        mileage = None
+        match = re.search(r'([\d,]+\.?\d*)\s*K\s*km', detail_text, re.IGNORECASE)
+        if match:
+            mileage = int(float(match.group(1).replace(",", "")) * 1000)
+        else:
+            match = re.search(r'([\d,]+)\s*km', detail_text, re.IGNORECASE)
+            if match:
+                mileage = int(match.group(1).replace(",", ""))
+
+        fuel_type = None
+        for f in ["Petrol", "Diesel", "CNG", "Electric", "Hybrid"]:
+            if f in detail_text:
+                fuel_type = f
+                break
+
+        transmission = None
+        if "Automatic" in detail_text or "Auto" in detail_text:
+            transmission = "Automatic"
+        elif "Manual" in detail_text:
+            transmission = "Manual"
 
         img_el = await card.query_selector("img")
         img_url = await img_el.get_attribute("src") if img_el else None
 
-        brand, model = self.extract_brand_model(title)
-        full_url = f"https://www.spinny.com{url}" if url.startswith("/") else url
-
         return {
-            "source_id": url.split("/")[-1] if url else title,
+            "source_id": source_id,
             "title": title.strip(),
             "brand": brand,
             "model": model,
-            "year": self.extract_year(detail_text),
-            "price": self._format_price(price_str),
+            "year": year,
+            "price": price,
+            "mileage": mileage,
+            "fuel_type": fuel_type,
+            "transmission": transmission,
             "listing_url": full_url,
             "image_urls": [img_url] if img_url else [],
             "description": detail_text.strip(),
+            "location": location,
         }

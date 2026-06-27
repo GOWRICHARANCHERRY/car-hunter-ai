@@ -128,21 +128,24 @@ class BaseScraper(ABC):
     def _format_price(self, price_str: str) -> Optional[int]:
         if not price_str:
             return None
-        cleaned = re.sub(r'[₹Rs,\s]', '', price_str.replace(',', '')).strip()
-        if 'lakh' in cleaned.lower():
-            cleaned = cleaned.lower().replace('lakh', '').strip()
+        s = price_str.replace(',', '')
+        s = re.sub(r'\s+', '', s)
+        s = s.replace('₹', '').replace('Rs.', '').replace('rs.', '')
+        lower = s.lower()
+        if 'lakh' in lower or lower.endswith('l'):
+            s = lower.replace('lakh', '').replace('l', '').strip()
             try:
-                return int(float(cleaned) * 100000)
+                return int(float(s) * 100000)
             except ValueError:
                 return None
-        if 'crore' in cleaned.lower():
-            cleaned = cleaned.lower().replace('crore', '').strip()
+        if 'crore' in lower or lower.endswith('cr'):
+            s = lower.replace('crore', '').replace('cr', '').strip()
             try:
-                return int(float(cleaned) * 10000000)
+                return int(float(s) * 10000000)
             except ValueError:
                 return None
         try:
-            return int(cleaned)
+            return int(float(s))
         except ValueError:
             return None
 
