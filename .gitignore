@@ -11,3 +11,4 @@ dist/
 .venv/
 venv/
 .pytest_cache/
+.env.backup

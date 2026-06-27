@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "car-hunter"
     minio_secure: bool = False
-    scrape_interval_minutes: int = 30
+    scrape_interval_minutes: int = 14
     notification_score_threshold: int = 85
     whatsapp_phone_number_id: str = ""
     whatsapp_access_token: str = ""
