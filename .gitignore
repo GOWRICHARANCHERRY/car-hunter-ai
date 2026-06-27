@@ -12,3 +12,5 @@ dist/
 venv/
 .pytest_cache/
 .env.backup
+*.db
+*.db-journal
