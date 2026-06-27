@@ -13,18 +13,19 @@ from backend.utils.metrics import CARS_ACTIVE
 
 
 class BaseScraper(ABC):
+    needs_browser: bool = True
+
     @property
     @abstractmethod
     def source_name(self) -> str:
         pass
 
     @abstractmethod
-    async def scrape_listings(self, page, session=None) -> List[Dict]:
+    async def scrape_listings(self, page=None, session=None) -> List[Dict]:
         pass
 
     async def run(self):
         import traceback
-        from playwright.async_api import async_playwright
 
         job_id = None
         async with async_session() as session:
@@ -34,31 +35,48 @@ class BaseScraper(ABC):
             job_id = job.id
 
         listings = []
-        browser = None
-        async with async_playwright() as pw:
+        if self.needs_browser:
+            from playwright.async_api import async_playwright
+            browser = None
+            async with async_playwright() as pw:
+                try:
+                    browser = await pw.chromium.launch(
+                        headless=True,
+                        args=[
+                            "--no-sandbox",
+                            "--disable-blink-features=AutomationControlled",
+                            "--disable-web-security",
+                            "--disable-features=IsolateOrigins,site-per-process",
+                        ],
+                    )
+                    context = await browser.new_context(
+                        viewport={"width": 1920, "height": 1080},
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                    )
+                    await context.add_init_script("""
+                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                        Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+                        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                        window.chrome = { runtime: {} };
+                    """)
+                    page = await context.new_page()
+                    listings = await self.scrape_listings(page, None)
+                except Exception as e:
+                    print(f"[{self.source_name}] Error: {e}")
+                    traceback.print_exc()
+                    async with async_session() as session:
+                        j = await session.get(ScrapeJob, job_id)
+                        if j:
+                            j.status = "failed"
+                            j.errors = {"error": str(e)}
+                            await session.commit()
+                    raise e
+                finally:
+                    if browser:
+                        await browser.close()
+        else:
             try:
-                browser = await pw.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-blink-features=AutomationControlled",
-                        "--disable-web-security",
-                        "--disable-features=IsolateOrigins,site-per-process",
-                    ],
-                )
-                context = await browser.new_context(
-                    viewport={"width": 1920, "height": 1080},
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-                )
-                await context.add_init_script("""
-                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                    Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
-                    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-                    // Override chrome object
-                    window.chrome = { runtime: {} };
-                """)
-                page = await context.new_page()
-                listings = await self.scrape_listings(page, None)
+                listings = await self.scrape_listings(None, None)
             except Exception as e:
                 print(f"[{self.source_name}] Error: {e}")
                 traceback.print_exc()
@@ -69,9 +87,6 @@ class BaseScraper(ABC):
                         j.errors = {"error": str(e)}
                         await session.commit()
                 raise e
-            finally:
-                if browser:
-                    await browser.close()
 
         saved = 0
         updated = 0
@@ -84,7 +99,7 @@ class BaseScraper(ABC):
                     elif result == "updated":
                         updated += 1
                 except Exception as e:
-                    print(f"Save error: {e}")
+                    print(f"Save error: {e}", flush=True)
 
             j = await session.get(ScrapeJob, job_id)
             if j:
@@ -100,7 +115,7 @@ class BaseScraper(ABC):
                 await session.scalar(select(func.count(Car.id)).where(Car.is_active == True))
             )
 
-        print(f"[{self.source_name}] {saved} new, {updated} updated / {len(listings)} total")
+        print(f"[{self.source_name}] {saved} new, {updated} updated / {len(listings)} total", flush=True)
         return listings
 
     async def _save_listing(self, session, data: Dict) -> str:

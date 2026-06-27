@@ -5,8 +5,9 @@ from scrapers.browsers import BaseScraper
 
 class OLXScraper(BaseScraper):
     source_name = "OLX"
+    needs_browser = False
 
-    async def scrape_listings(self, page, session) -> List[Dict]:
+    async def scrape_listings(self, page=None, session=None) -> List[Dict]:
         import httpx
         listings = []
 
