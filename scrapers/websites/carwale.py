@@ -5,93 +5,111 @@ from scrapers.browsers import BaseScraper
 
 class CarWaleScraper(BaseScraper):
     source_name = "CarWale"
+    needs_browser = False
 
-    async def scrape_listings(self, page, session) -> List[Dict]:
+    async def scrape_listings(self, page=None, session=None) -> List[Dict]:
+        import httpx
         listings = []
+
         try:
-            await page.goto("https://www.carwale.com/used/", timeout=30000, wait_until="domcontentloaded")
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                resp = await client.get(
+                    "https://www.carwale.com/used/",
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/125.0.0.0 Safari/537.36"
+                        ),
+                    },
+                )
+                html = resp.text
         except Exception as e:
-            print(f"[CarWale] goto failed: {e}", flush=True)
+            err_msg = str(e) or type(e).__name__
+            print(f"[CarWale] HTTP fetch failed: {err_msg}", flush=True)
             return []
-        await page.wait_for_timeout(8000)
 
-        for _ in range(5):
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await page.wait_for_timeout(2000)
-
-        cards = await page.query_selector_all(
-            '[class*="UsedCarCard-module-scss-module"]'
+        card_blocks = re.findall(
+            r'class="[^"]*UsedCarCard-module-scss-module[^"]*"[^>]*>.*?</a>\s*</div>',
+            html,
+            re.DOTALL,
         )
 
-        for card in cards[:30]:
+        if not card_blocks:
+            card_blocks = html.split('class="UsedCarCard-module-scss-module')[1:]
+            card_blocks = ['<div class="UsedCarCard-module-scss-module' + c[:4000] for c in card_blocks]
+
+        for block in card_blocks[:30]:
             try:
-                data = await self._extract(page, card)
+                data = self._extract(block)
                 if data and data.get("price"):
                     listings.append(data)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[CarWale] card error: {e}", flush=True)
 
+        print(f"[CarWale] Found {len(card_blocks)} card blocks, extracted {len(listings)} listings", flush=True)
         return listings
 
-    async def _extract(self, page, card) -> Optional[Dict]:
-        link_el = await card.query_selector("a[href]")
-        url = await link_el.get_attribute("href") if link_el else ""
+    def _extract(self, block: str) -> Optional[Dict]:
+        text = re.sub(r'<[^>]+>', ' ', block)
+        text = re.sub(r'\s+', ' ', text).strip()
+        if text.startswith("Used "):
+            text = text[5:]
+
+        link_match = re.search(r'href="([^"]+)"', block)
+        url = link_match.group(1).strip() if link_match else ""
         full_url = url if url.startswith("http") else f"https://www.carwale.com{url}"
         source_id = url.rstrip("/").split("/")[-1] if url else ""
 
-        card_text = (await card.inner_text()).replace("\u00a0", " ").strip()
-        card_text = re.sub(r'\s+', ' ', card_text)
-
-        if card_text.startswith("Used "):
-            card_text = card_text[5:]
-
-        km_match = re.search(r'([\d,]+)\s*km', card_text, re.IGNORECASE)
-        mileage = int(km_match.group(1).replace(",", "")) if km_match else None
-
-        parts = [p.strip() for p in card_text.split("|")]
+        parts = [p.strip() for p in text.split("|")]
 
         title = parts[0].strip() if parts else ""
+        km_match = re.search(r'([\d,]+)\s*km', title, re.IGNORECASE)
         if km_match:
-            title = title[: km_match.start()].strip()
-            if title.endswith(","):
-                title = title[:-1].strip()
+            title = title[:km_match.start()].strip().rstrip(",").strip()
 
         fuel_type = parts[1].strip() if len(parts) > 1 else None
+
         location = parts[2].strip() if len(parts) > 2 else ""
         if location:
-            location = location.split("Rs.")[0].strip()
-            location = re.sub(r'\s+Rs\.?\s*.*$', '', location).strip()
+            location = re.sub(r'\s*Rs\.?\s*.*$', '', location).strip()
 
         price_str = ""
-        price_match = re.search(r'Rs\.\s*([\d,]+\.?\d*)\s*(Lakh|Crore|K|Lac)', card_text, re.IGNORECASE)
+        price_match = re.search(r'Rs\.?\s*([\d,]+\.?\d*)\s*(Lakh|Crore|L|K)\b', text, re.IGNORECASE)
         if price_match:
             price_str = f"Rs. {price_match.group(1)} {price_match.group(2)}"
 
-        year = self.extract_year(title)
+        price = self._format_price(price_str)
+        year = self.extract_year(text)
 
         brand, model = self.extract_brand_model(title)
 
         transmission = None
-        if "Automatic" in card_text or "AMT" in card_text or "DCT" in card_text:
+        if "Automatic" in text or "AMT" in text or "DCT" in text:
             transmission = "Automatic"
-        elif "Manual" in card_text or "MT" in card_text:
+        elif "Manual" in text or "MT" in text:
             transmission = "Manual"
 
-        img_el = await card.query_selector("img")
-        img_url = await img_el.get_attribute("src") if img_el else None
+        mileage = None
+        km_match2 = re.search(r'([\d,]+)\s*km', text, re.IGNORECASE)
+        if km_match2:
+            mileage = int(km_match2.group(1).replace(",", ""))
+
+        img_match = re.search(r'<img[^>]*src="([^"]+)"', block)
+        img_url = img_match.group(1) if img_match else None
 
         return {
             "source_id": source_id,
-            "title": title.strip(),
+            "title": title.strip()[:100],
             "brand": brand,
             "model": model,
             "year": year,
-            "price": self._format_price(price_str),
+            "price": price,
             "mileage": mileage,
             "fuel_type": fuel_type,
             "transmission": transmission,
             "listing_url": full_url,
             "image_urls": [img_url] if img_url else [],
-            "description": card_text.strip(),
+            "description": text.strip()[:300],
             "location": location,
         }
