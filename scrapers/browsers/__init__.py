@@ -37,11 +37,23 @@ class BaseScraper(ABC):
         browser = None
         async with async_playwright() as pw:
             try:
-                browser = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
-                page = await browser.new_page(
-                    viewport={"width": 1920, "height": 1080},
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                browser = await pw.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-blink-features=AutomationControlled",
+                    ],
                 )
+                context = await browser.new_context(
+                    viewport={"width": 1920, "height": 1080},
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                )
+                await context.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                    Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4] });
+                    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                """)
+                page = await context.new_page()
                 listings = await self.scrape_listings(page, None)
             except Exception as e:
                 print(f"[{self.source_name}] Error: {e}")
