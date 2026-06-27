@@ -19,7 +19,7 @@ RUN apt-get update && \
     libgbm1 libpango-1.0-0 libcairo2 libxshmfence1 \
     libx11-xcb1 libxcb1 libxext6 libxfixes3 libxi6 libxrender1 \
     libgdk-pixbuf-2.0-0 xdg-utils \
-    fonts-liberation fonts-noto-color-emoji fonts-unifont fonts-ubuntu && \
+    fonts-liberation fonts-noto-color-emoji fonts-unifont && \
     for pkg in libatk1.0-0 libatk1.0-0t64 libatk-bridge2.0-0 libatk-bridge2.0-0t64 \
                libcups2 libcups2t64 libasound2 libasound2t64 \
                libatspi2.0-0 libatspi2.0-0t64 libglib2.0-0 libglib2.0-0t64; do \
