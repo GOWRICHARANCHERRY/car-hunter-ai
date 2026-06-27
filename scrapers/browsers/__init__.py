@@ -19,61 +19,67 @@ class BaseScraper(ABC):
         pass
 
     @abstractmethod
-    async def scrape_listings(self, browser, session) -> List[Dict]:
+    async def scrape_listings(self, page, session=None) -> List[Dict]:
         pass
 
     async def run(self):
         from playwright.async_api import async_playwright
 
+        job_id = None
         async with async_session() as session:
             job = ScrapeJob(source=self.source_name, status="running", started_at=datetime.utcnow())
             session.add(job)
-            await session.flush()
+            await session.commit()
+            job_id = job.id
 
-            async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
+        listings = []
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
+            try:
+                page = await browser.new_page(
+                    viewport={"width": 1920, "height": 1080},
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                )
+                listings = await self.scrape_listings(page, None)
+            except Exception as e:
+                async with async_session() as session:
+                    j = await session.get(ScrapeJob, job_id)
+                    if j:
+                        j.status = "failed"
+                        j.errors = {"error": str(e)}
+                        await session.commit()
+                raise e
+            finally:
+                await browser.close()
+
+        saved = 0
+        updated = 0
+        async with async_session() as session:
+            for data in listings:
                 try:
-                    page = await browser.new_page(
-                        viewport={"width": 1920, "height": 1080},
-                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                    )
-                    listings = await self.scrape_listings(page, session)
-                    saved = 0
-                    updated = 0
-
-                    for data in listings:
-                        try:
-                            result = await self._save_listing(session, data)
-                            if result == "new":
-                                saved += 1
-                            elif result == "updated":
-                                updated += 1
-                        except Exception as e:
-                            print(f"Save error: {e}")
-
-                    await session.commit()
-
-                    job.status = "completed"
-                    job.completed_at = datetime.utcnow()
-                    job.listings_found = len(listings)
-                    job.listings_new = saved
-                    job.listings_updated = updated
-                    await session.commit()
-
-                    CARS_ACTIVE.set(
-                        await session.scalar(select(func.count(Car.id)).where(Car.is_active == True))
-                    )
-
-                    print(f"[{self.source_name}] {saved} new, {updated} updated / {len(listings)} total")
-
+                    result = await self._save_listing(session, data)
+                    if result == "new":
+                        saved += 1
+                    elif result == "updated":
+                        updated += 1
                 except Exception as e:
-                    job.status = "failed"
-                    job.errors = {"error": str(e)}
-                    await session.commit()
-                    raise e
-                finally:
-                    await browser.close()
+                    print(f"Save error: {e}")
 
+            j = await session.get(ScrapeJob, job_id)
+            if j:
+                j.status = "completed"
+                j.completed_at = datetime.utcnow()
+                j.listings_found = len(listings)
+                j.listings_new = saved
+                j.listings_updated = updated
+
+            await session.commit()
+
+            CARS_ACTIVE.set(
+                await session.scalar(select(func.count(Car.id)).where(Car.is_active == True))
+            )
+
+        print(f"[{self.source_name}] {saved} new, {updated} updated / {len(listings)} total")
         return listings
 
     async def _save_listing(self, session, data: Dict) -> str:
