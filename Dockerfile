@@ -22,18 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
     libasound2t64 libatspi2.0-0t64 && \
     ldconfig && \
-    python3 -c "
-import ctypes, ctypes.util
-for lib in ['glib-2.0', 'gobject-2.0', 'atk-1.0', 'atk-bridge-2.0', \
-            'cups', 'asound', 'atspi', 'X11', 'xcb', 'Xcomposite', \
-            'Xdamage', 'Xrandr', 'gbm', 'pango-1.0', 'cairo', \
-            'nspr4', 'nss3', 'dbus-1', 'xkbcommon', 'Xext', \
-            'Xfixes', 'Xi', 'Xrender', 'gdk_pixbuf-2.0', 'xshmfence']:
-    path = ctypes.util.find_library(lib)
-    status = 'OK' if path else 'MISSING'
-    if status == 'MISSING':
-        print(f'  {status}: lib{lib}.so')
-" && \
+    python3 -c "import ctypes.util; [print(f'  MISSING: lib{l}.so') for l in ['glib-2.0','gobject-2.0','atk-1.0','atk-bridge-2.0','asound','cups','atspi','X11','xcb','Xcomposite','Xdamage','Xrandr','gbm','pango-1.0','cairo','nspr4','nss3','dbus-1','xkbcommon','Xext','Xfixes','Xi','Xrender','gdk_pixbuf-2.0','xshmfence'] if not ctypes.util.find_library(l)]" && \
     rm -rf /var/lib/apt/lists/*
 
 COPY . .
