@@ -3,7 +3,7 @@ from typing import Optional, List
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/car_hunter"
+    database_url: str = "sqlite+aiosqlite:///./car_hunter.db"
     redis_url: str = "redis://redis:6379/0"
     gemini_api_key: str = ""
     telegram_bot_token: str = ""
