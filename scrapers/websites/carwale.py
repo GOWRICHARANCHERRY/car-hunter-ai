@@ -10,14 +10,11 @@ class CarWaleScraper(BaseScraper):
 
     CITIES = [
         ("delhi", 10), ("mumbai", 11), ("bangalore", 12), ("hyderabad", 13),
-        ("pune", 16), ("chennai", 17), ("kolkata", 18), ("ahmedabad", 19),
     ]
 
     BRANDS = [
         ("maruti-suzuki", 10), ("hyundai", 11), ("honda", 12), ("toyota", 13),
-        ("mahindra", 14), ("tata", 15), ("kia", 17), ("renault", 18),
-        ("volkswagen", 19), ("skoda", 21), ("nissan", 22), ("bmw", 24),
-        ("mercedes-benz", 25), ("audi", 26),
+        ("mahindra", 14), ("tata", 15),
     ]
 
     async def scrape_listings(self, page=None, session=None) -> List[Dict]:
@@ -64,7 +61,7 @@ class CarWaleScraper(BaseScraper):
                 listings.append(item)
         next_url = data.get("nextPageUrl")
         page = 2
-        while next_url and page <= 10:
+        while next_url and page <= 3:
             try:
                 full_url = next_url if next_url.startswith("http") else f"https://www.carwale.com{next_url}"
                 resp = await client.get(full_url, headers=headers)

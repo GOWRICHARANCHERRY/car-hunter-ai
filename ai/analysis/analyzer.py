@@ -95,9 +95,10 @@ async def analyze_unanalyzed_listings():
             select(Car).where(Car.id.not_in(subq), Car.is_active == True)
         )
         cars = result.scalars().all()
-        for car in cars:
+        batch = cars[:50]
+        for car in batch:
             analysis = await analyze_car(car)
             if analysis:
                 session.add(analysis)
         await session.commit()
-        print(f"Analyzed {len(cars)} new listings")
+        print(f"Analyzed {len(batch)} new listings (of {len(cars)} unanalyzed)")
