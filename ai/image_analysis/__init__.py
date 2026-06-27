@@ -54,7 +54,7 @@ async def analyze_car_images(car_id, image_urls: List[str]) -> Optional[Dict]:
 
     try:
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash-lite",
             contents=[VISION_PROMPT, *image_parts],
         )
         text = response.text.strip()

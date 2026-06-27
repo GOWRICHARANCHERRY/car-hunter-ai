@@ -62,7 +62,7 @@ async def chat_search(body: ChatRequest, db: AsyncSession = Depends(get_db)):
     prompt = f"{SYSTEM_PROMPT}\n\nUser: {body.message}"
     try:
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash-lite",
             contents=prompt,
         )
         text = response.text.strip()
