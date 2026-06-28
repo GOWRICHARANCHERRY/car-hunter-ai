@@ -29,6 +29,32 @@ async def scheduler_loop():
             from ai.analysis.analyzer import analyze_unanalyzed_listings
             await analyze_unanalyzed_listings()
 
+            try:
+                from notifications.telegram import send_telegram_message
+                from sqlalchemy import select, func
+                from database.repositories import async_session
+                from database.models import Car, CarAnalysis
+                async with async_session() as s:
+                    total = await s.scalar(select(func.count(Car.id)).where(Car.is_active == True))
+                    scored = await s.scalar(select(func.count(CarAnalysis.id)).where(CarAnalysis.score.isnot(None)))
+                    top = await s.execute(
+                        select(CarAnalysis).order_by(CarAnalysis.score.desc()).limit(3)
+                    )
+                    top_list = []
+                    for a in top.scalars():
+                        car = await s.get(Car, a.car_id)
+                        if car:
+                            top_list.append(f"• {car.title[:30]} — Score: {a.score}/100")
+                    msg = (
+                        f"🔄 *Car Hunter Cycle Complete*\n"
+                        f"Total cars: {total} | Analyzed: {scored}\n\n"
+                    )
+                    if top_list:
+                        msg += "*Top Deals:*\n" + "\n".join(top_list)
+                    await send_telegram_message(msg)
+            except Exception as notify_e:
+                print(f"Telegram notification error: {notify_e}")
+
         except Exception as e:
             print(f"Scheduler error: {e}")
 

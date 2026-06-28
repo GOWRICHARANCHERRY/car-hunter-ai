@@ -18,7 +18,7 @@ export default function Chat() {
       const data = await api.chat(message)
       setResult(data)
     } catch (err) {
-      setError('Chat requires Gemini API key to be configured.')
+      setError('Chat requires Groq API key to be configured.')
     } finally {
       setLoading(false)
     }
