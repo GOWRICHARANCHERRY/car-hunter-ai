@@ -5,61 +5,49 @@ from scrapers.browsers import BaseScraper
 
 class OLXScraper(BaseScraper):
     source_name = "OLX"
-    needs_browser = False
+    needs_browser = True
 
     async def scrape_listings(self, page=None, session=None) -> List[Dict]:
-        import httpx
-        import asyncio
         listings = []
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0.0.0 Safari/537.36"
-            ),
-        }
+        if not page:
+            return listings
 
-        html = None
-        for attempt in range(2):
+        cities = ["delhi", "mumbai", "bangalore", "pune", "chennai"]
+        for city in cities:
             try:
-                async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-                    resp = await client.get(
-                        "https://www.olx.in/cars/",
-                        headers=headers,
-                    )
-                    html = resp.text
-                    break
-            except httpx.TimeoutException:
-                print(f"[OLX] HTTP timeout (attempt {attempt + 1})")
-                if attempt == 0:
-                    headers["User-Agent"] = (
-                        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
-                        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
-                    )
-                    await asyncio.sleep(5)
+                await page.goto(
+                    f"https://www.olx.in/cars/q-{city}/",
+                    wait_until="domcontentloaded",
+                    timeout=90000,
+                )
+                await page.wait_for_timeout(5000)
+                try:
+                    await page.wait_for_selector('[data-aut-id="itemBox2"]', timeout=20000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(2000)
+
+                html = await page.content()
+                items = re.findall(
+                    r'<li[^>]*data-aut-id="itemBox2"[^>]*>(.*?)</li>',
+                    html,
+                    re.DOTALL,
+                )
+
+                for item_html in items[:20]:
+                    try:
+                        data = self._extract(item_html)
+                        if data and data.get("price"):
+                            data["city"] = city.title()
+                            listings.append(data)
+                    except Exception as e:
+                        print(f"[OLX] card error: {e}")
+
             except Exception as e:
-                err_msg = str(e) or type(e).__name__
-                print(f"[OLX] HTTP fetch failed: {err_msg}")
-                return []
+                print(f"[OLX] {city} error: {e}", flush=True)
+                continue
 
-        if not html:
-            print("[OLX] No response after retries")
-            return []
-
-        items = re.findall(
-            r'<li[^>]*data-aut-id="itemBox2"[^>]*>(.*?)</li>',
-            html,
-            re.DOTALL,
-        )
-
-        for item_html in items[:30]:
-            try:
-                data = self._extract(item_html)
-                if data and data.get("price"):
-                    listings.append(data)
-            except Exception as e:
-                print(f"[OLX] card error: {e}")
-
+        print(f"[OLX] Extracted {len(listings)} listings from {len(cities)} cities", flush=True)
         return listings
 
     def _extract(self, item_html: str) -> Optional[Dict]:
