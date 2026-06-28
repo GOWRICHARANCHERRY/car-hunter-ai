@@ -13,6 +13,7 @@ from backend.config import settings
 
 async def scheduler_loop():
     while True:
+        print("Starting scheduler cycle...")
         try:
             from scrapers.websites.cars24 import Cars24Scraper
             from scrapers.websites.spinny import SpinnyScraper
@@ -51,7 +52,8 @@ async def scheduler_loop():
                     )
                     if top_list:
                         msg += "*Top Deals:*\n" + "\n".join(top_list)
-                    await send_telegram_message(msg)
+                    ok = await send_telegram_message(msg)
+                    print(f"Telegram summary sent: {ok}")
             except Exception as notify_e:
                 print(f"Telegram notification error: {notify_e}")
 
