@@ -1,7 +1,7 @@
 import json
 from typing import Optional
 from sqlalchemy import select
-from google import genai
+from groq import Groq
 
 from database.models import Car, CarAnalysis
 from database.repositories import async_session
@@ -9,21 +9,21 @@ from backend.config import settings
 from ai.analysis.scorer import calculate_score
 
 client = None
-if settings.gemini_api_key:
-    client = genai.Client(api_key=settings.gemini_api_key)
+if settings.groq_api_key:
+    client = Groq(api_key=settings.groq_api_key)
 
 
 ANALYSIS_PROMPT = """You are an automotive buying expert. Analyze this used car listing.
 
 Return valid JSON with no markdown:
-{{"score": <int 0-100>,
+{"score": <int 0-100>,
 "fair_price": <int in INR>,
 "recommendation": "<Excellent Deal|Good Deal|Fair Deal|Skip>",
 "pros": ["<pro>", ...],
 "cons": ["<con>", ...],
 "market_insight": "<one sentence market analysis>",
 "negotiation_tip": "<one sentence negotiation advice>"
-}}
+}
 
 Weight: Market Price 25%, Mileage 15%, Owner Count 15%, Condition 20%, Seller Trust 10%, Resale 5%, Service History 10%
 
@@ -54,15 +54,16 @@ async def analyze_car(car: Car) -> Optional[CarAnalysis]:
             description=(car.description or "")[:800],
         )
         try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash-lite",
-                contents=prompt,
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
             )
-            text = response.text.strip()
+            text = response.choices[0].message.content.strip()
             text = text.replace("```json", "").replace("```", "").strip()
             data = json.loads(text)
         except Exception as e:
-            print(f"Gemini API error: {e}")
+            print(f"AI API error: {e}")
             data = calculate_score(car)
     else:
         data = calculate_score(car)

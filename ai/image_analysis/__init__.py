@@ -2,7 +2,7 @@ import json
 from typing import Optional, List, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
-from google import genai
+from groq import Groq
 
 from database.models import Car, CarAnalysis, CarImage
 from database.repositories import async_session
@@ -10,8 +10,8 @@ from backend.config import settings
 from backend.services.storage import storage_service
 
 client = None
-if settings.gemini_api_key:
-    client = genai.Client(api_key=settings.gemini_api_key)
+if settings.groq_api_key:
+    client = Groq(api_key=settings.groq_api_key)
 
 
 VISION_PROMPT = """Analyze these car photos. Return JSON only:
@@ -41,9 +41,9 @@ async def analyze_car_images(car_id, image_urls: List[str]) -> Optional[Dict]:
                     import base64
                     b64 = base64.b64encode(resp.content).decode()
                     image_parts.append({
-                        "inline_data": {
-                            "mime_type": "image/jpeg",
-                            "data": b64,
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{b64}"
                         }
                     })
         except Exception:
@@ -53,11 +53,13 @@ async def analyze_car_images(car_id, image_urls: List[str]) -> Optional[Dict]:
         return None
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash-lite",
-            contents=[VISION_PROMPT, *image_parts],
+        content = [{"type": "text", "text": VISION_PROMPT}, *image_parts]
+        response = client.chat.completions.create(
+            model="llama-3.2-11b-vision-preview",
+            messages=[{"role": "user", "content": content}],
+            response_format={"type": "json_object"},
         )
-        text = response.text.strip()
+        text = response.choices[0].message.content.strip()
         text = text.replace("```json", "").replace("```", "").strip()
         return json.loads(text)
     except Exception as e:

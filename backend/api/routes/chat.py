@@ -13,9 +13,9 @@ router = APIRouter(tags=["chat"])
 
 
 client = None
-if settings.gemini_api_key:
-    from google import genai
-    client = genai.Client(api_key=settings.gemini_api_key)
+if settings.groq_api_key:
+    from groq import Groq
+    client = Groq(api_key=settings.groq_api_key)
 
 
 SYSTEM_PROMPT = """You are an AI car buying assistant. Convert the user's natural language request into a JSON filter object for searching used cars.
@@ -57,15 +57,16 @@ class ChatResponse(BaseModel):
 @router.post("/chat", response_model=ChatResponse)
 async def chat_search(body: ChatRequest, db: AsyncSession = Depends(get_db)):
     if not client:
-        raise HTTPException(503, "AI chat requires Gemini API key")
+        raise HTTPException(503, "AI chat requires Groq API key")
 
     prompt = f"{SYSTEM_PROMPT}\n\nUser: {body.message}"
     try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash-lite",
-            contents=prompt,
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
         )
-        text = response.text.strip()
+        text = response.choices[0].message.content.strip()
         text = text.replace("```json", "").replace("```", "").strip()
         data = json.loads(text)
         filters = data.get("filters", {})
