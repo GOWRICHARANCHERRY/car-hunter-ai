@@ -16,14 +16,14 @@ if settings.groq_api_key:
 ANALYSIS_PROMPT = """You are an automotive buying expert. Analyze this used car listing.
 
 Return valid JSON with no markdown:
-{"score": <int 0-100>,
+{{"score": <int 0-100>,
 "fair_price": <int in INR>,
 "recommendation": "<Excellent Deal|Good Deal|Fair Deal|Skip>",
 "pros": ["<pro>", ...],
 "cons": ["<con>", ...],
 "market_insight": "<one sentence market analysis>",
 "negotiation_tip": "<one sentence negotiation advice>"
-}
+}}
 
 Weight: Market Price 25%, Mileage 15%, Owner Count 15%, Condition 20%, Seller Trust 10%, Resale 5%, Service History 10%
 
