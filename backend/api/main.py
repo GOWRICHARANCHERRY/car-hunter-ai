@@ -45,7 +45,8 @@ async def scheduler_loop():
                     for a in top.scalars():
                         car = await s.get(Car, a.car_id)
                         if car:
-                            top_list.append(f"• {car.title[:30]} — Score: {a.score}/100")
+                            link = f" [🔗]({car.listing_url})" if car.listing_url else ""
+                            top_list.append(f"• {car.title[:40]}{link} — Score: {a.score}/100")
                     msg = (
                         f"🔄 *Car Hunter Cycle Complete*\n"
                         f"Total cars: {total} | Analyzed: {scored}\n\n"

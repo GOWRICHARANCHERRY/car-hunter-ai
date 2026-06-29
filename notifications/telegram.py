@@ -57,6 +57,8 @@ def format_deal_message(car: Dict) -> str:
         f"💰 ₹{car['price']:,}\n\n"
         f"*Score:* {car['score']}/100 {stars}\n"
     )
+    if car.get("listing_url"):
+        msg += f"🔗 [View Listing]({car['listing_url']})\n"
     if car.get("fair_price"):
         diff = car["fair_price"] - car["price"]
         if diff > 0:
@@ -67,6 +69,4 @@ def format_deal_message(car: Dict) -> str:
         msg += "\n*Pros:*\n" + "\n".join(f"✓ {p}" for p in car["pros"][:3]) + "\n"
     if car.get("cons"):
         msg += "\n*Cons:*\n" + "\n".join(f"⚠️ {c}" for c in car["cons"][:2]) + "\n"
-    if car.get("listing_url"):
-        msg += f"\n[View Listing]({car['listing_url']})"
     return msg
