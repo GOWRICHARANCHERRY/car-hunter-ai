@@ -124,7 +124,26 @@ async def search_and_notify_on_preferences(prefs: dict):
             model_conditions = [Car.model.ilike(f"%{m}%") for m in preferred_models]
             conditions.append(or_(*model_conditions))
         if cities:
-            city_conditions = [Car.city.ilike(f"%{c}%") for c in cities]
+            CITY_ALIASES = {
+                "bangalore": ["Bengaluru", "Bangalore"],
+                "bengaluru": ["Bengaluru", "Bangalore"],
+                "delhi": ["Delhi", "New Delhi", "Delhi NCR"],
+                "new delhi": ["Delhi", "New Delhi", "Delhi NCR"],
+                "mumbai": ["Mumbai"],
+                "hyderabad": ["Hyderabad"],
+                "chennai": ["Chennai"],
+                "pune": ["Pune"],
+                "kolkata": ["Kolkata"],
+                "ahmedabad": ["Ahmedabad"],
+                "jaipur": ["Jaipur"],
+            }
+            expanded = set()
+            for c in cities:
+                key = c.strip().lower()
+                expanded.add(c.strip())
+                if key in CITY_ALIASES:
+                    expanded.update(CITY_ALIASES[key])
+            city_conditions = [Car.city.ilike(f"%{alias}%") for alias in expanded]
             conditions.append(or_(*city_conditions))
         if fuel_types:
             fuel_conditions = [Car.fuel_type.ilike(f) for f in fuel_types]

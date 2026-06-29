@@ -86,7 +86,23 @@ async def chat_search(body: ChatRequest, db: AsyncSession = Depends(get_db)):
     if filters.get("min_year"):
         query = query.where(Car.year >= filters["min_year"])
     if filters.get("city"):
-        query = query.where(Car.city.ilike(f"%{filters['city']}%"))
+        CITY_ALIASES = {
+            "bangalore": ["Bengaluru", "Bangalore"],
+            "bengaluru": ["Bengaluru", "Bangalore"],
+            "delhi": ["Delhi", "New Delhi", "Delhi NCR"],
+            "new delhi": ["Delhi", "New Delhi", "Delhi NCR"],
+            "mumbai": ["Mumbai"],
+            "hyderabad": ["Hyderabad"],
+            "chennai": ["Chennai"],
+            "pune": ["Pune"],
+            "kolkata": ["Kolkata"],
+            "ahmedabad": ["Ahmedabad"],
+            "jaipur": ["Jaipur"],
+        }
+        city = filters["city"]
+        key = city.strip().lower()
+        aliases = CITY_ALIASES.get(key, [city])
+        query = query.where(or_(*(Car.city.ilike(f"%{a}%") for a in aliases)))
     if filters.get("fuel_type"):
         query = query.where(Car.fuel_type.ilike(f"%{filters['fuel_type']}%"))
     if filters.get("transmission"):

@@ -191,4 +191,5 @@ class SpinnyScraper(BaseScraper):
             "image_urls": [img_url] if img_url else [],
             "description": card_text.strip()[:300],
             "location": location,
+            "city": location,
         }

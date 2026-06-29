@@ -7,6 +7,21 @@ const defaultPrefs = {
   fuel_types: '', transmission: '', colors: '',
 }
 
+function Field({ label, name, placeholder = '', type = 'text', value, onChange }) {
+  return (
+    <div>
+      <label className="block text-sm text-gray-400 mb-1">{label}</label>
+      {type === 'textarea' ? (
+        <textarea name={name} value={value} onChange={onChange} placeholder={placeholder}
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" rows={2} />
+      ) : (
+        <input type={type} name={name} value={value} onChange={onChange} placeholder={placeholder}
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" />
+      )}
+    </div>
+  )
+}
+
 export default function Settings() {
   const [prefs, setPrefs] = useState(defaultPrefs)
   const [profiles, setProfiles] = useState([])
@@ -66,21 +81,6 @@ export default function Settings() {
     }
   }
 
-  function Field({ label, name, placeholder = '', type = 'text' }) {
-    return (
-      <div>
-        <label className="block text-sm text-gray-400 mb-1">{label}</label>
-        {type === 'textarea' ? (
-          <textarea name={name} value={prefs[name]} onChange={handleChange} placeholder={placeholder}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" rows={2} />
-        ) : (
-          <input type={type} name={name} value={prefs[name]} onChange={handleChange} placeholder={placeholder}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" />
-        )}
-      </div>
-    )
-  }
-
   return (
     <div className="max-w-3xl">
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
@@ -89,17 +89,17 @@ export default function Settings() {
         <h2 className="text-lg font-semibold mb-4">Search Preferences</h2>
         <form onSubmit={handleSave} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Budget Min (₹)" name="budget_min" type="number" placeholder="500000" />
-            <Field label="Budget Max (₹)" name="budget_max" type="number" placeholder="900000" />
+            <Field label="Budget Min (₹)" name="budget_min" type="number" placeholder="500000" value={prefs.budget_min} onChange={handleChange} />
+            <Field label="Budget Max (₹)" name="budget_max" type="number" placeholder="900000" value={prefs.budget_max} onChange={handleChange} />
           </div>
-          <Field label="Preferred Models (comma separated)" name="preferred_models" placeholder="Honda City, Hyundai Verna" />
-          <Field label="Cities (comma separated)" name="cities" placeholder="Bangalore, Hyderabad, Chennai" />
+          <Field label="Preferred Models (comma separated)" name="preferred_models" placeholder="Honda City, Hyundai Verna" value={prefs.preferred_models} onChange={handleChange} />
+          <Field label="Cities (comma separated)" name="cities" placeholder="Bangalore, Hyderabad, Chennai" value={prefs.cities} onChange={handleChange} />
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Max KMs" name="max_kms" type="number" placeholder="50000" />
-            <Field label="Transmission" name="transmission" placeholder="Automatic" />
+            <Field label="Max KMs" name="max_kms" type="number" placeholder="50000" value={prefs.max_kms} onChange={handleChange} />
+            <Field label="Transmission" name="transmission" placeholder="Automatic" value={prefs.transmission} onChange={handleChange} />
           </div>
-          <Field label="Fuel Types (comma separated)" name="fuel_types" placeholder="Petrol, Diesel" />
-          <Field label="Colors (comma separated)" name="colors" placeholder="White, Black" />
+          <Field label="Fuel Types (comma separated)" name="fuel_types" placeholder="Petrol, Diesel" value={prefs.fuel_types} onChange={handleChange} />
+          <Field label="Colors (comma separated)" name="colors" placeholder="White, Black" value={prefs.colors} onChange={handleChange} />
           <button type="submit" disabled={saving}
             className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm transition">
             {saving ? 'Saving...' : 'Save Preferences'}
